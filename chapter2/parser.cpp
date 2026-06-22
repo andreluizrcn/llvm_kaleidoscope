@@ -105,7 +105,7 @@ static std::unique_ptr<ExprAST> ParseNumberExpr() {
 /*Parenexpr ::= '(' [expression] ')' */
 static std::unique_ptr<ExprAST> ParseParenExpr() {
   getNextToken();
-  auto V = ParserExpression();
+  auto V = ParseExpression();
   if (!V) {
     return nullptr;
   }
@@ -114,5 +114,57 @@ static std::unique_ptr<ExprAST> ParseParenExpr() {
     return V;
   } else {
     return LogError("expected ')");
+  }
+}
+
+/* identifierexpr
+   ::= identifier
+   ::= identifier '(' expression* ')'*/
+static std::unique_ptr<ExprAST> ParseIdentifierOrCallExpr() {
+  std::string IdName = IdentifierStr;
+  getNextToken(); // eat identifier
+
+  if (CurTok == '(') {
+    getNextToken(); // eat (
+    std::vector<std::unique_ptr<ExprAST>> Args;
+    if (CurTok != ')') {
+      while (true) {
+        auto Arg = ParseExpression();
+        if (Arg) {
+          Args.push_back(std::move(Arg));
+        } else {
+          return nullptr;
+        }
+        if (CurTok == ')') {
+          getNextToken(); // eat )
+          break;
+        } else if (CurTok == ',') {
+          getNextToken();
+          continue;
+        } else {
+          return LogError("Expected ')' or ',' in argument list");
+        }
+      }
+    }
+    return std::make_unique<CallExprAST>(IdName, std::move(Args));
+  } else {
+    return std::make_unique<VariableExprAST>(IdName);
+  }
+}
+
+/* primary
+   ::= identifierexpr
+   ::= numberexpr
+   ::= parenexpr */
+static std::unique_ptr<ExprAST> ParsePrimary() {
+  switch (CurTok) {
+  case tok_identifier:
+    return ParseIdentifierOrCallExpr();
+  case tok_number:
+    return ParseNumberExpr();
+  case '(':
+    return ParseParenExpr();
+  default:
+    return LogError("unknown token when expecting an expression");
   }
 }
