@@ -3,7 +3,6 @@
 #include "lexer.cpp"
 #include <algorithm>
 #include <cstdio>
-#include <map>
 #include <memory>
 #include <string>
 #include <utility>
@@ -187,18 +186,6 @@ static int GetTokPrecedence() {
   }
 }
 
-/* expression
-   ::= primary binoprhs*/
-static std::unique_ptr<ExprAST> ParseExpression() {
-  auto LHS = ParsePrimary();
-  if (LHS) {
-    // initialize with 0 so any op will be recognized in GetTokPrecedence();
-    return ParseBinOpRHS(0, std::move(LHS));
-  } else {
-    return nullptr;
-  }
-}
-
 /* binoprhs
    ::= ('+' primary)* */
 static std::unique_ptr<ExprAST> ParseBinOpRHS(int ExprPrec,
@@ -212,9 +199,55 @@ static std::unique_ptr<ExprAST> ParseBinOpRHS(int ExprPrec,
       int BinOp = CurTok;
       getNextToken();            // eats binop
       auto RHS = ParsePrimary(); // parses 'primary expr' after 'binop'
-      if (!RHS) {
+      if (RHS) {
+        int NextPrec = GetTokPrecedence();
+        if (TokPrec < NextPrec) {
+          RHS = ParseBinOpRHS(TokPrec + 1, std::move(RHS));
+          if (!RHS) {
+            return nullptr;
+          }
+        }
+        LHS = std::make_unique<BinaryExprAST>(BinOp, std::move(LHS),
+                                              std::move(RHS));
+      } else {
         return nullptr;
       }
     }
   }
+}
+
+/* expression
+   ::= primary binoprhs*/
+static std::unique_ptr<ExprAST> ParseExpression() {
+  auto LHS = ParsePrimary();
+  if (LHS) {
+    // initialize with 0 so any op will be recognized in GetTokPrecedence();
+    return ParseBinOpRHS(0, std::move(LHS));
+  } else {
+    return nullptr;
+  }
+}
+
+/* prototype
+   ::= id '(' id* ')'*/
+static std::unique_ptr<PrototypeAST> ParsePrototype() {
+  // expecting first tok to be identifier otherwise throw error
+  if (CurTok != tok_identifier) {
+    return LogErrorP("Expected function name in prototype");
+  }
+  std::string FnName = IdentifierStr;
+  getNextToken(); // eats identifier 'foo?'
+
+  if (CurTok != '(') {
+    return LogErrorP("Expected '(' in prototype");
+  }
+  std::vector<std::string> ArgNames; // instanciated
+  while (getNextToken() == tok_identifier) {
+    ArgNames.push_back(IdentifierStr);
+  }
+  if (CurTok != ')') {
+    return LogErrorP("Expected ')' in prototype");
+  }
+  getNextToken();
+  return std::make_unique<PrototypeAST>(FnName, std::move(ArgNames));
 }
