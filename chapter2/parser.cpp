@@ -3,6 +3,7 @@
 #include "lexer.cpp"
 #include <algorithm>
 #include <cstdio>
+#include <map>
 #include <memory>
 #include <string>
 #include <utility>
@@ -166,5 +167,54 @@ static std::unique_ptr<ExprAST> ParsePrimary() {
     return ParseParenExpr();
   default:
     return LogError("unknown token when expecting an expression");
+  }
+}
+
+// GetTokPrecedence - Get the precedence of the pending binary operator token.
+static int GetTokPrecedence() {
+  switch (CurTok) {
+  case '<':
+  case '>':
+    return 10;
+  case '+':
+  case '-':
+    return 20;
+  case '*':
+  case '/':
+    return 40;
+  default:
+    return -1;
+  }
+}
+
+/* expression
+   ::= primary binoprhs*/
+static std::unique_ptr<ExprAST> ParseExpression() {
+  auto LHS = ParsePrimary();
+  if (LHS) {
+    // initialize with 0 so any op will be recognized in GetTokPrecedence();
+    return ParseBinOpRHS(0, std::move(LHS));
+  } else {
+    return nullptr;
+  }
+}
+
+/* binoprhs
+   ::= ('+' primary)* */
+static std::unique_ptr<ExprAST> ParseBinOpRHS(int ExprPrec,
+                                              std::unique_ptr<ExprAST> LHS) {
+  while (true) {
+    int TokPrec = GetTokPrecedence(); // '+','-', ...
+
+    if (TokPrec < ExprPrec) { // 'ignore' next op and return LHS
+      return LHS;
+    } else {
+      int BinOp = CurTok;
+      getNextToken();            // eats binop
+      auto RHS = ParsePrimary(); // parses 'primary expr' after 'binop'
+      if (!RHS) {
+        return nullptr;
+      }
+    }
   }
 }
