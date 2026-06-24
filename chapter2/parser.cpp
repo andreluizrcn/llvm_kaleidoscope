@@ -251,3 +251,60 @@ static std::unique_ptr<PrototypeAST> ParsePrototype() {
   getNextToken();
   return std::make_unique<PrototypeAST>(FnName, std::move(ArgNames));
 }
+
+/* definition ::= 'def' prototype expression*/
+static std::unique_ptr<FunctionAST> ParseDefinition() {
+  getNextToken(); // eats def
+  auto Proto = ParsePrototype();
+  if (!Proto) {
+    return nullptr;
+  }
+
+  auto E = ParseExpression();
+  if (E) {
+    return std::make_unique<FunctionAST>(std::move(Proto), std::move(E));
+    return nullptr;
+  }
+}
+
+/*external ::= 'extern' prototype*/
+std::unique_ptr<PrototypeAST> PauseExtern() {
+  getNextToken(); // eats extern (assumes it's CurTok)
+  return ParsePrototype();
+}
+
+/* toplevelexpr ::= expression*/
+std::unique_ptr<FunctionAST> ParseTopLevelExpr() {
+  auto E = ParseExpression();
+  if (E) {
+    // wrap in implicit top level unnamed func + empty vector of strings
+    // for its args
+    auto Proto = std::make_unique<PrototypeAST>("__anon_expr",
+                                                std::vector<std::string>());
+    return std::make_unique<FunctionAST>(std::move(Proto), std::move(E));
+  }
+  return nullptr;
+}
+
+/* top ::= definition | external | expression | ';' */
+static void MainLoop() {
+  while (true) {
+    fprintf(stderr, "ready> ");
+    switch (CurTok) {
+    case tok_eof:
+      return;
+    case ';': // ignore top-level semicolons.
+      getNextToken();
+      break;
+    case tok_def:
+      HandleDefinition();
+      break;
+    case tok_extern:
+      HandleExtern();
+      break;
+    default:
+      HandleTopLevelExpression();
+      break;
+    }
+  }
+}
