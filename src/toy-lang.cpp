@@ -1,11 +1,12 @@
-#include <algorithm>
+#include <cctype>
 #include <cstdio>
+#include <cstdlib>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
-/* ============== CHAPTER 1 - LEXER =================*/
+/* =================  CHAPTER 1 - LEXER =================*/
 
 // There's no strings in LLVM Kaleidoscope
 
@@ -94,7 +95,7 @@ static int gettok() {
   return ThisChar;
 }
 
-/* =============== CHAPTER 2 - PARSER ================== */
+/* ================= CHAPTER 2 - PARSER ================= */
 
 class ExprAST {
 public:
@@ -189,6 +190,8 @@ static std::unique_ptr<ExprAST> ParseNumberExpr() {
   getNextToken();
   return std::move(Result); // move ownership from ParseNumberExpr to Result
 }
+
+static std::unique_ptr<ExprAST> ParseExpression();
 
 /*Parenexpr ::= '(' [expression] ')' */
 static std::unique_ptr<ExprAST> ParseParenExpr() {
@@ -351,8 +354,8 @@ static std::unique_ptr<FunctionAST> ParseDefinition() {
   auto E = ParseExpression();
   if (E) {
     return std::make_unique<FunctionAST>(std::move(Proto), std::move(E));
-    return nullptr;
   }
+  return nullptr;
 }
 
 /*external ::= 'extern' prototype*/
@@ -424,3 +427,12 @@ static void MainLoop() {
     }
   }
 }
+
+int main() {
+  std::fprintf(stderr, "ready> ");
+  getNextToken();
+
+  MainLoop();
+  return 0;
+}
+/*================= CHAPTER 3 - CODE GENERATION/IR =================*/
