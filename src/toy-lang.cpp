@@ -1,10 +1,25 @@
+#include "llvm/ADT/APFloat.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/Type.h"
+#include "llvm/IR/Verifier.h"
+#include <algorithm>
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
+#include <map>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
+
+using namespace llvm;
 
 /* =================  CHAPTER 1 - LEXER =================*/
 
@@ -100,6 +115,10 @@ static int gettok() {
 class ExprAST {
 public:
   virtual ~ExprAST() = default;
+  /* requires every subclass to implement this method (this styling is C++
+   specific = not implemented + it requires implementation on some subclass,
+   when it uses '= 0') */
+  virtual Value *codegen() = 0;
 };
 
 class NumberExprAST : public ExprAST { // inherit from ExprAST to num
@@ -107,7 +126,14 @@ class NumberExprAST : public ExprAST { // inherit from ExprAST to num
 
 public:
   NumberExprAST(double V) : Val(V) {} // constructor + init
+  Value *codegen() override;
 };
+
+/* Code gen for num expr */
+Value *NumberExprAST::codegen() {
+  // flowting point const -> translates num into floating point const contruct
+  return ConstantFP::get(*TheContext, APFloat(Val));
+}
 
 /// Expression class for referencing a var, like 'a,b,c.'
 class VariableExprAST : public ExprAST {
@@ -119,6 +145,14 @@ public:
   VariableExprAST(const std::string &Name) : Name(Name) {}
 };
 
+Value *VariableExprAST::codegen() {
+  Value *V = NamedValues[name];
+  if (!V) {
+    LogErrorV("Unknown variable name");
+  }
+  return V;
+}
+
 /// Expression class for a bin operation
 class BinaryExprAST : public ExprAST {
   char Op; // + - * / > <
@@ -129,6 +163,28 @@ public:
                 std::unique_ptr<ExprAST> RHS)
       : Op(Op), LHS(std::move(LHS)), RHS(std::move(RHS)) {}
 };
+
+Value *BinaryExprAST::codegen() {
+  Value *L = LHS->codegen();
+  Value *R = RHS->codegen();
+  if (!L || !R) {
+    return nullptr;
+  }
+  switch (Op) {
+  case '+':
+    return Builder->CreateFAdd(L, R, "addtmp");
+  case '-':
+    return Builder->CreateFSub(L, R, "subtmp");
+  case '*':
+    return Builder->CreateFMul(L, R, "multmp");
+  case '<':
+    L = Builder->CreateFCmpULT(L, R, "cmptmp");
+    /* Convert bool 0/1 to double 0.0 or 1.0 */
+    return Builder->CreateUIToFP(L, Type::getDOubleTY(*TheContext), "booltmp");
+  default:
+    return LogErrorV("invalid binary operator");
+  }
+}
 
 /* Expression class for function calls */
 class CallExprAST : public ExprAST {
@@ -428,6 +484,13 @@ static void MainLoop() {
   }
 }
 
+/*================= CHAPTER 3 - CODE GENERATION/IR =================*/
+static std::unique_ptr<LLVMContext> TheContext;
+static std::unique_ptr<IRBuilder<>> Builder;
+static std::unique_ptr<Module> TheModule;
+static std::map<std::string, Value *> NamedValues;
+
+/* ================= main() block ================= */
 int main() {
   std::fprintf(stderr, "ready> ");
   getNextToken();
@@ -435,4 +498,3 @@ int main() {
   MainLoop();
   return 0;
 }
-/*================= CHAPTER 3 - CODE GENERATION/IR =================*/
